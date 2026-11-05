@@ -20,13 +20,13 @@ const MODES = ['outbox', 'android', 'beem'];
 const DEFAULTS = {
   mode: process.env.IGP_SMS_MODE === 'sandbox' || !process.env.IGP_SMS_MODE ? 'outbox' : process.env.IGP_SMS_MODE,
   enabled_at: null,
-  redirect_to: process.env.IGP_SMS_REDIRECT ?? '254705605723', // demo phone that receives every text
+  redirect_to: process.env.IGP_SMS_REDIRECT || '', // demo phone(s) that receive every text – entered in Admin → SMS → Settings
   android: { url: 'https://api.sms-gate.app/3rdparty/v1', username: '', password: '' },
   beem: { api_key: '', secret_key: '', sender: 'INFO' },
 };
 const MAX_ATTEMPTS = 3;
 
-// Tanzanian numbers may be written locally (0777 123 456); any other country needs its + code (e.g. +254 705 605 723)
+// Tanzanian numbers may be written locally (0777 123 456); any other country needs its + code (e.g. +254 700 000 000)
 function normalise(m) {
   const t = String(m || '').trim();
   let s = t.replace(/[^\d]/g, '');
@@ -37,7 +37,7 @@ function normalise(m) {
     if (s.startsWith('0')) s = '255' + s.slice(1);
     if (/^255[67]\d{8}$/.test(s)) return s;
   }
-  throw bad(`"${t}" is not a valid mobile number – write e.g. 0777 123 456, or +254 705 605 723 for other countries`);
+  throw bad(`"${t}" is not a valid mobile number – write e.g. 0777 123 456, or +254 700 000 000 for other countries`);
 }
 
 function config() {
@@ -75,6 +75,10 @@ function updateConfig(b) {
     if (b.beem.api_key) c.beem.api_key = String(b.beem.api_key).trim();
     if (b.beem.secret_key) c.beem.secret_key = String(b.beem.secret_key).trim();
     if (b.beem.sender !== undefined) c.beem.sender = String(b.beem.sender).trim().slice(0, 11) || 'INFO';
+  }
+  // sample applicants' phone numbers are made up and may belong to real people: never text them
+  if (c.mode !== 'outbox' && !c.redirect_to && process.env.IGP_SAMPLE_DATA !== '0') {
+    throw bad('This system holds sample data, so enter your demo phone number under "send every text to these numbers instead". Texts to the made-up sample numbers could reach real people.');
   }
   if (c.mode === 'android' && (!c.android.url || !c.android.username || !c.android.password)) throw bad('Enter the gateway address, username and password from the SMS Gateway app');
   if (c.mode === 'beem' && (!c.beem.api_key || !c.beem.secret_key)) throw bad('Enter the Beem API key and secret key');

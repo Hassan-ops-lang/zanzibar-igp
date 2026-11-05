@@ -217,8 +217,10 @@ test('SMS through an Android phone gateway, with demo redirect', async () => {
     db.run("INSERT INTO sms_outbox(msisdn, message, created_at) VALUES('255777999888', 'old message', datetime('now', '-1 hour'))");
     // incomplete settings are refused
     await admin('/admin/sms/settings', { method: 'PUT', body: { mode: 'android', android: { url, username: '', password: '' } }, expect: 400 });
-    const cfg = await admin('/admin/sms/settings', { method: 'PUT', body: { mode: 'android', redirect_to: '0777 000 111, +254705605723', android: { url, username: 'demo', password: 'secret123' } } });
-    assert.equal(cfg.redirect_to, '255777000111,254705605723');
+    const noRedirect = await admin('/admin/sms/settings', { method: 'PUT', body: { mode: 'android', redirect_to: '', android: { url, username: 'demo', password: 'secret123' } }, expect: 400 });
+    assert.match(noRedirect.error, /sample data/);
+    const cfg = await admin('/admin/sms/settings', { method: 'PUT', body: { mode: 'android', redirect_to: '0777 000 111, +254700000001', android: { url, username: 'demo', password: 'secret123' } } });
+    assert.equal(cfg.redirect_to, '255777000111,254700000001');
     assert.ok(!JSON.stringify(cfg).includes('secret123'), 'password never sent back to the browser');
 
     // a sign-up now sends a real text (to the demo phone) and no longer shows the code on screen
@@ -228,11 +230,11 @@ test('SMS through an Android phone gateway, with demo redirect', async () => {
     await sms.processQueue();
     assert.equal(got.length, 1, 'only the new message is sent – older outbox messages are never blasted out');
     assert.equal(got[0].path, '/message');
-    assert.deepEqual(got[0].body.phoneNumbers, ['+255777000111', '+254705605723']);
+    assert.deepEqual(got[0].body.phoneNumbers, ['+255777000111', '+254700000001']);
     assert.match(got[0].body.message, new RegExp(`^\\[Demo, for \\+${p.phone}\\] Your Zanzibar e-Government verification code is \\d{6}`));
     const rows = (await admin('/admin/sms')).rows;
     assert.equal(rows[0].status, 'sent');
-    assert.equal(rows[0].sent_to, '255777000111,254705605723');
+    assert.equal(rows[0].sent_to, '255777000111,254700000001');
     assert.equal(rows.find((r) => r.message === 'old message').status, 'outbox');
     assert.ok(rows.slice(1).every((r) => r.status !== 'sent'));
 

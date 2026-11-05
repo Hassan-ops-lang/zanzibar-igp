@@ -196,7 +196,7 @@ route(/^\/admin\/sms$/, async () => {
     document.getElementById('sms-cfg').onclick = async () => {
       const ok = await modalAction('SMS settings', h`
         <label class="f"><span>How texts are delivered</span><select name="mode">${Object.entries(MODE).map(([k, l]) => h`<option value="${k}" ${k === c.mode ? raw('selected') : ''}>${l}</option>`)}</select></label>
-        <label class="f"><span>Demo: send every text to these numbers instead</span><input name="redirect_to" value="${c.redirect_to ? c.redirect_to.split(',').map((n) => (n.startsWith('255') ? '0' + n.slice(3) : '+' + n)).join(', ') : ''}" placeholder="e.g. 0777 123 456, +254 705 605 723"></label>
+        <label class="f"><span>Demo: send every text to these numbers instead</span><input name="redirect_to" value="${c.redirect_to ? c.redirect_to.split(',').map((n) => (n.startsWith('255') ? '0' + n.slice(3) : '+' + n)).join(', ') : ''}" placeholder="e.g. 0777 123 456, +254 700 000 000"></label>
         <p class="hint">Strongly recommended for demos: the sample applicants’ phone numbers are made up and may belong to real people. Leave blank only when using real applicant data.</p>
         <fieldset class="card" style="padding:12px;margin:8px 0"><legend><b>Android phone</b></legend>
           <p class="hint" style="margin-top:0">Install <b>SMS Gateway for Android</b> (free, sms-gate.app) on a phone with a SIM card. In the app use the <b>Cloud server</b> address below, or the phone’s <b>Local server</b> address (e.g. http://192.168.1.20:8080) if this computer is on the same Wi-Fi. Copy the username and password shown in the app.</p>
