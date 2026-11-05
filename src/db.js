@@ -191,6 +191,15 @@ CREATE TABLE IF NOT EXISTS audit_log (
 `;
 db.exec(SCHEMA);
 
+// migrations for databases created by earlier versions
+{
+  const cols = db.prepare('PRAGMA table_info(sms_outbox)').all().map((c) => c.name);
+  for (const [name, def] of [['attempts', 'INTEGER NOT NULL DEFAULT 0'], ['next_attempt_at', 'TEXT'], ['gateway', 'TEXT'], ['gateway_ref', 'TEXT'],
+    ['sent_to', 'TEXT'], ['sent_at', 'TEXT'], ['last_error', 'TEXT']]) {
+    if (!cols.includes(name)) db.exec(`ALTER TABLE sms_outbox ADD COLUMN ${name} ${def}`);
+  }
+}
+
 function tx(fn) {
   db.exec('BEGIN IMMEDIATE');
   try { const r = fn(); db.exec('COMMIT'); return r; }

@@ -189,7 +189,46 @@ route(/^\/admin\/audit$/, async ({ query }) => {
 }, { roles: ['admin'] });
 
 route(/^\/admin\/sms$/, async () => {
-  const rows = await api('/admin/sms');
-  return h`<div class="page-head"><div><h1>SMS outbox</h1><p>Messages queued for the SMS gateway (sandbox mode: delivered to this outbox).</p></div></div>
-    ${card('', h`<div class="table-wrap"><table class="t"><tr><th>Time</th><th>To</th><th>Message</th><th>Status</th></tr>${rows.map((r) => h`<tr><td style="white-space:nowrap">${fmtDateTime(r.created_at)}</td><td class="mono">+${r.msisdn}</td><td>${r.message}</td><td>${r.status}</td></tr>`)}</table></div>`)}`;
+  const { settings: c, counts, rows } = await api('/admin/sms');
+  const MODE = { outbox: 'Outbox only (nothing is sent)', android: 'Android phone – SMS Gateway app (free)', beem: 'Beem Africa (paid, sender name)' };
+  const ST = { sent: ['Sent', 'good'], queued: ['Waiting', 'warn'], sending: ['Sending', 'warn'], failed: ['Failed', 'bad'], outbox: ['Not sent', ''] };
+  after(() => {
+    document.getElementById('sms-cfg').onclick = async () => {
+      const ok = await modalAction('SMS settings', h`
+        <label class="f"><span>How texts are delivered</span><select name="mode">${Object.entries(MODE).map(([k, l]) => h`<option value="${k}" ${k === c.mode ? raw('selected') : ''}>${l}</option>`)}</select></label>
+        <label class="f"><span>Demo: send every text to these numbers instead</span><input name="redirect_to" value="${c.redirect_to ? c.redirect_to.split(',').map((n) => (n.startsWith('255') ? '0' + n.slice(3) : '+' + n)).join(', ') : ''}" placeholder="e.g. 0777 123 456, +254 705 605 723"></label>
+        <p class="hint">Strongly recommended for demos: the sample applicants’ phone numbers are made up and may belong to real people. Leave blank only when using real applicant data.</p>
+        <fieldset class="card" style="padding:12px;margin:8px 0"><legend><b>Android phone</b></legend>
+          <p class="hint" style="margin-top:0">Install <b>SMS Gateway for Android</b> (free, sms-gate.app) on a phone with a SIM card. In the app use the <b>Cloud server</b> address below, or the phone’s <b>Local server</b> address (e.g. http://192.168.1.20:8080) if this computer is on the same Wi-Fi. Copy the username and password shown in the app.</p>
+          <label class="f"><span>Gateway address</span><input name="a_url" value="${c.android.url}"></label>
+          <div class="grid g2"><label class="f"><span>Username</span><input name="a_user" value="${c.android.username}" autocomplete="off"></label>
+          <label class="f"><span>Password</span><input name="a_pass" type="password" autocomplete="new-password" placeholder="${c.android.password_set ? 'Saved (' + c.android.password_hint + ') – leave blank to keep' : ''}"></label></div></fieldset>
+        <fieldset class="card" style="padding:12px;margin:8px 0"><legend><b>Beem Africa</b></legend>
+          <div class="grid g2"><label class="f"><span>API key</span><input name="b_key" autocomplete="off" placeholder="${c.beem.api_key_hint ? 'Saved (' + c.beem.api_key_hint + ') – leave blank to keep' : ''}"></label>
+          <label class="f"><span>Secret key</span><input name="b_secret" type="password" autocomplete="new-password" placeholder="${c.beem.secret_set ? 'Saved – leave blank to keep' : ''}"></label></div>
+          <label class="f"><span>Sender name (approved by TCRA)</span><input name="b_sender" value="${c.beem.sender}" maxlength="11"></label></fieldset>`,
+      (v) => api('/admin/sms/settings', { method: 'PUT', body: { mode: v.mode, redirect_to: v.redirect_to,
+        android: { url: v.a_url, username: v.a_user, password: v.a_pass || undefined },
+        beem: { api_key: v.b_key || undefined, secret_key: v.b_secret || undefined, sender: v.b_sender } } }), { submit: 'Save', wide: true });
+      if (ok) { toast('SMS settings saved'); refresh(); }
+    };
+    document.getElementById('sms-test').onclick = async () => {
+      const r = await modalAction('Send a test SMS', h`<label class="f"><span>Phone number</span><input name="to" required placeholder="0777 123 456" inputmode="tel"></label>`,
+        (v) => api('/admin/sms/test', { body: { to: v.to } }), { submit: 'Send' });
+      if (r) toast('Test SMS sent – check the phone'); refresh();
+    };
+    document.querySelectorAll('[data-retry]').forEach((b) => { b.onclick = async () => {
+      try { await api(`/admin/sms/${b.dataset.retry}/retry`, { method: 'POST' }); toast('Queued to send again'); refresh(); } catch (e) { toast(e.message, true); } }; });
+  });
+  const live = c.mode !== 'outbox';
+  return h`<div class="page-head"><div><h1>SMS</h1><p>Text messages to applicants: sign-up codes, application updates, payment receipts.</p></div>
+    <div class="row"><button class="btn" id="sms-test" ${live ? '' : raw('disabled title="Choose a gateway first"')}>Send test SMS</button><button class="btn primary" id="sms-cfg">Settings</button></div></div>
+    <div class="notice ${live ? 'good' : ''}">${live
+      ? h`<b>Sending through: ${MODE[c.mode]}</b>${c.redirect_to ? h` · Demo redirect on – all texts go to ${c.redirect_to.split(',').map((n) => '+' + n).join(', ')}` : h` · <b>Texts go to applicants’ real numbers</b>`}`
+      : h`<b>Outbox only.</b> Texts are recorded here but not sent, and sign-up codes are shown on screen. Open Settings to connect a free Android phone.`}</div>
+    <div class="stack"><div class="grid g4">${statTile('Sent', counts.sent || 0)}${statTile('Waiting', counts.queued || 0)}${statTile('Failed', counts.failed || 0)}${statTile('Not sent (outbox)', counts.outbox || 0)}</div>
+    ${card('Messages', rows.length ? h`<div class="table-wrap"><table class="t"><tr><th>Time</th><th>To</th><th>Message</th><th>Status</th><th></th></tr>${rows.map((r) => { const [l, cl] = ST[r.status] || [r.status, '']; return h`<tr>
+      <td style="white-space:nowrap">${fmtDateTime(r.sent_at || r.created_at)}</td><td class="mono">+${r.msisdn}${r.sent_to && r.sent_to !== r.msisdn ? h`<br><small class="muted">delivered to +${r.sent_to.split(',').join(', +')}</small>` : ''}</td>
+      <td>${r.message}</td><td><span class="badge ${cl}">${l}</span>${r.last_error ? h`<br><small class="muted">${r.last_error}</small>` : ''}</td>
+      <td>${live && ['failed', 'outbox'].includes(r.status) ? h`<button class="btn small" data-retry="${r.id}">Send</button>` : ''}</td></tr>`; })}</table></div>` : empty('No messages yet'))}</div>`;
 }, { roles: ['admin'] });

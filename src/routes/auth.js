@@ -66,7 +66,7 @@ r.post('/register/start', (req, res) => {
   run('INSERT INTO sms_outbox(msisdn, message) VALUES(?,?)', p.phone, `Your Zanzibar e-Government verification code is ${otp}. It expires in 10 minutes.`);
   audit(req, 'auth.register_start', 'person', p.id);
   const out = { ok: true, phone_hint: `•••• ${p.phone.slice(-3)}`, full_name: p.full_name };
-  if ((process.env.IGP_SMS_MODE || 'sandbox') === 'sandbox') out.sandbox_code = otp; // shown only while SMS gateway is in sandbox mode
+  if (require('../lib/sms').showCodesOnScreen()) out.sandbox_code = otp; // shown only while texts are not really being sent
   res.json(out);
 });
 

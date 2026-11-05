@@ -85,7 +85,9 @@ function startJobs() {
   };
   snap();
   const t2 = setInterval(snap, 15 * 60e3);
-  return () => { clearInterval(t1); clearInterval(t2); };
+  const sms = require('./lib/sms');
+  const t3 = setInterval(() => sms.processQueue().catch((e) => console.error('sms', e)), 5e3);
+  return () => { clearInterval(t1); clearInterval(t2); clearInterval(t3); };
 }
 
 if (require.main === module) {

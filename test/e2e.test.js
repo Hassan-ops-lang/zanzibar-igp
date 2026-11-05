@@ -194,3 +194,59 @@ test('citizen self-registration against the civil registry', async () => {
   const c = await post('/register/complete', { zan_id: p.zan_id, code: s.sandbox_code, username: 'newuser1', password: 'Passw0rd!' });
   assert.equal(c.status, 200);
 });
+
+test('SMS through an Android phone gateway, with demo redirect', async () => {
+  const http = require('node:http');
+  const sms = require('../src/lib/sms');
+  const got = [];
+  const gw = http.createServer((req, res) => {
+    let b = ''; req.on('data', (c) => { b += c; });
+    req.on('end', () => {
+      const ok = req.headers.authorization === 'Basic ' + Buffer.from('demo:secret123').toString('base64');
+      if (ok) got.push({ path: req.url, body: JSON.parse(b) });
+      res.writeHead(ok ? 202 : 401, { 'content-type': 'application/json' }).end(JSON.stringify(ok ? { id: 'msg-' + got.length, state: 'Pending' } : { message: 'Unauthorized' }));
+    });
+  }).listen(0);
+  await new Promise((r) => gw.once('listening', r));
+  const url = `http://127.0.0.1:${gw.address().port}`;
+  try {
+    const admin = await login('admin');
+    // an older message waiting in the outbox from before the gateway was switched on
+    const db = require('../src/db');
+    db.run("UPDATE sms_outbox SET created_at = datetime(created_at, '-1 hour')");
+    db.run("INSERT INTO sms_outbox(msisdn, message, created_at) VALUES('255777999888', 'old message', datetime('now', '-1 hour'))");
+    // incomplete settings are refused
+    await admin('/admin/sms/settings', { method: 'PUT', body: { mode: 'android', android: { url, username: '', password: '' } }, expect: 400 });
+    const cfg = await admin('/admin/sms/settings', { method: 'PUT', body: { mode: 'android', redirect_to: '0777 000 111, +254705605723', android: { url, username: 'demo', password: 'secret123' } } });
+    assert.equal(cfg.redirect_to, '255777000111,254705605723');
+    assert.ok(!JSON.stringify(cfg).includes('secret123'), 'password never sent back to the browser');
+
+    // a sign-up now sends a real text (to the demo phone) and no longer shows the code on screen
+    const p = (await admin('/admin/persons?q=')).filter((x) => x.phone && !db.one('SELECT 1 FROM users WHERE person_id = ?', x.id)).at(-1);
+    const s = await (await fetch(base + '/api/auth/register/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ zan_id: p.zan_id, dob: p.dob }) })).json();
+    assert.equal(s.sandbox_code, undefined);
+    await sms.processQueue();
+    assert.equal(got.length, 1, 'only the new message is sent – older outbox messages are never blasted out');
+    assert.equal(got[0].path, '/message');
+    assert.deepEqual(got[0].body.phoneNumbers, ['+255777000111', '+254705605723']);
+    assert.match(got[0].body.message, new RegExp(`^\\[Demo, for \\+${p.phone}\\] Your Zanzibar e-Government verification code is \\d{6}`));
+    const rows = (await admin('/admin/sms')).rows;
+    assert.equal(rows[0].status, 'sent');
+    assert.equal(rows[0].sent_to, '255777000111,254705605723');
+    assert.equal(rows.find((r) => r.message === 'old message').status, 'outbox');
+    assert.ok(rows.slice(1).every((r) => r.status !== 'sent'));
+
+    // test button goes straight to the number typed in
+    await admin('/admin/sms/test', { body: { to: '0655 123 456' } });
+    assert.deepEqual(got[1].body.phoneNumbers, ['+255655123456']);
+
+    // wrong password: message is marked failed with a readable reason
+    await admin('/admin/sms/settings', { method: 'PUT', body: { android: { password: 'wrong' } } });
+    const t = await admin('/admin/sms/test', { body: { to: '0655 123 456' }, expect: 400 });
+    assert.match(t.error, /username or password/);
+  } finally {
+    const admin = await login('admin');
+    await admin('/admin/sms/settings', { method: 'PUT', body: { mode: 'outbox', redirect_to: '' } });
+    gw.close();
+  }
+});

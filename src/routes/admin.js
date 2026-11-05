@@ -5,6 +5,7 @@ const { one, all, run, tx, getSetting, setSetting } = require('../db');
 const { bad, notFound, hashPassword, audit, verifyAuditChain, sha256, parse, ROLES } = require('../lib/core');
 const { requireRole } = require('../lib/auth');
 const { checkPassword } = require('./auth');
+const sms = require('../lib/sms');
 
 const r = express.Router();
 r.use(requireRole('admin'));
@@ -188,7 +189,27 @@ r.get('/audit', (req, res) => {
   res.json(all(`SELECT * FROM audit_log ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY id DESC LIMIT 300`, ...p));
 });
 r.get('/audit/verify', (_req, res) => res.json(verifyAuditChain()));
-r.get('/sms', (_req, res) => res.json(all('SELECT * FROM sms_outbox ORDER BY id DESC LIMIT 200')));
+r.get('/sms', (_req, res) => res.json({
+  settings: sms.publicConfig(),
+  counts: one(`SELECT SUM(status='sent') AS sent, SUM(status IN ('queued','sending')) AS queued, SUM(status='failed') AS failed,
+    SUM(status='outbox') AS outbox FROM sms_outbox`),
+  rows: all('SELECT * FROM sms_outbox ORDER BY id DESC LIMIT 200'),
+}));
+r.put('/sms/settings', (req, res) => {
+  const out = sms.updateConfig(req.body || {});
+  audit(req, 'admin.sms_settings', 'settings', 'sms', { mode: out.mode, redirect_to: out.redirect_to });
+  res.json(out);
+});
+r.post('/sms/test', async (req, res) => {
+  const out = await sms.sendTest(req.body.to);
+  audit(req, 'admin.sms_test', 'sms', out.id);
+  res.json(out);
+});
+r.post('/sms/:id/retry', (req, res) => {
+  sms.retry(Number(req.params.id));
+  audit(req, 'admin.sms_retry', 'sms', req.params.id);
+  res.json({ ok: true });
+});
 r.get('/callbacks', (_req, res) => res.json(all('SELECT * FROM payment_callbacks ORDER BY id DESC LIMIT 100')));
 
 module.exports = r;

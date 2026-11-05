@@ -61,7 +61,12 @@ All seeded accounts use the password **`Zanzibar@2026`**. You can change it with
 The software paths are complete. These parts run against built-in sandboxes until real credentials and agreements exist:
 
 - **Mobile money.** Providers start in `sandbox` mode, served by the built-in network and handset at `#/phone`. Switch each provider to `live` in Admin → *Payment providers*, then set its HTTPS API base and callback secret. A live push is `POST {api_base}/push`, signed the same way. Adapt the request body to each telco's G2T specification if it differs.
-- **SMS.** Messages are written to the `sms_outbox` table (Admin → *SMS outbox*). Connect a gateway worker that sends queued rows. Set `IGP_SMS_MODE=live` to stop the sign-up code from appearing on screen.
+- **SMS.** Every text is recorded in Admin → *SMS*, then sent by a background worker through the gateway chosen in *Settings*:
+  - **Outbox only** (default): nothing is sent; sign-up codes appear on screen.
+  - **Android phone (free):** install *SMS Gateway for Android* (https://sms-gate.app) on a phone with a SIM card. Use the app's Cloud server (`https://api.sms-gate.app/3rdparty/v1`) or its Local server (`http://<phone-ip>:8080`, same Wi-Fi), and copy the username and password from the app into Settings. Press *Send test SMS* to check.
+  - **Beem Africa (paid):** API key, secret key and a TCRA-approved sender name such as ZANGOV.
+
+  **Demo redirect:** while "send every text to these numbers instead" is filled in, every text goes to those phones, prefixed with the real recipient. It defaults to the demo phone `+254705605723` (change it with `IGP_SMS_REDIRECT`, or set `IGP_SMS_REDIRECT=` to empty when using real applicant data). The sample applicants' numbers are made up, so keep the redirect on for demos. Only messages created after a gateway is switched on are ever sent. Failed sends are retried 3 times, then shown as *Failed* with the reason and a *Send* button.
 - **Civil and business registries.** These are seeded with sample people and businesses. In production the registry agencies push them through `POST /api/x/v1/persons` and `/businesses`.
 - **Production settings.** Set `IGP_SECURE_COOKIES=1` behind HTTPS, `IGP_DISABLE_SANDBOX=1` once all providers are live, and `IGP_SAMPLE_DATA=0` to start without sample data. Back up the `data/` directory.
 

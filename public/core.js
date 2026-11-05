@@ -180,7 +180,7 @@ function navFor(role) {
     case 'executive': return [['Executive', [...sip, N('#/sip/history', '↗', 'Daily snapshots')]]];
     case 'admin': return [['Administration', [N('#/home', '⌂', 'Overview'), N('#/admin/rollout', '◷', 'Rollout phases'), N('#/admin/services', '☰', 'Services'), N('#/admin/agencies', '▦', 'Agencies'),
       N('#/admin/records', '✓', 'Record sharing'), N('#/admin/users', '☺', 'Users'), N('#/admin/registry', '◉', 'Civil registry'), N('#/admin/integration', '⚿', 'API keys'),
-      N('#/admin/providers', '₮', 'Payment providers'), N('#/admin/audit', '≡', 'Audit log'), N('#/admin/sms', '✉', 'SMS outbox')]], ['Oversight', [...sip, N('#/finance/payments', '₮', 'Payments')]]];
+      N('#/admin/providers', '₮', 'Payment providers'), N('#/admin/audit', '≡', 'Audit log'), N('#/admin/sms', '✉', 'SMS')]], ['Oversight', [...sip, N('#/finance/payments', '₮', 'Payments')]]];
     default: return [];
   }
 }
