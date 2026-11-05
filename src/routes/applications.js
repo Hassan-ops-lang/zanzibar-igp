@@ -101,20 +101,22 @@ r.get('/applications', (req, res) => {
 });
 
 r.post('/applications', requireRole('citizen', 'front_office'), upload.any(), (req, res) => {
-  const body = typeof req.body.payload === 'string' ? JSON.parse(req.body.payload) : req.body;
+  const discard = () => { for (const f of req.files || []) fs.rmSync(f.path, { force: true }); };
+  let body;
+  try { body = typeof req.body.payload === 'string' ? JSON.parse(req.body.payload) : req.body; } catch { discard(); throw bad('Invalid application data'); }
   let personId = req.user.person_id; let channel = 'online';
   if (req.user.role === 'front_office') {
     const p = one('SELECT id FROM persons WHERE zan_id = ?', String(body.zan_id || ''));
-    if (!p) throw bad('Look up the applicant by ZanID first');
+    if (!p) { discard(); throw bad('Look up the applicant by ZanID first'); }
     const svc = one('SELECT agency_id FROM services WHERE id = ?', body.service_id);
-    if (!svc || svc.agency_id !== req.user.agency_id) throw forbidden('Desk staff can only submit for their own agency’s services');
+    if (!svc || svc.agency_id !== req.user.agency_id) { discard(); throw forbidden('Desk staff can only submit for their own agency’s services'); }
     personId = p.id; channel = 'desk';
   }
   let result;
   try {
     result = wf.submit(req, { serviceId: Number(body.service_id), personId, businessId: Number(body.business_id) || null, formData: body.form || {}, channel });
   } catch (e) {
-    for (const f of req.files || []) fs.rmSync(f.path, { force: true });
+    discard();
     throw e;
   }
   for (const f of req.files || []) storeFile(req, result.id, f.fieldname.replace(/^doc_/, ''), f);

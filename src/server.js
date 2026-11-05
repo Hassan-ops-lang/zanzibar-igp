@@ -27,7 +27,11 @@ function createApp() {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/payments/callback') || req.path.startsWith('/x/')) return next();
     if ((req.headers.authorization || '').startsWith('Bearer ')) return next();
     const origin = req.headers.origin;
-    if (origin && new URL(origin).host !== req.headers.host) return next(new HttpError(403, 'Cross-origin request blocked'));
+    if (origin) {
+      let host = null;
+      try { host = new URL(origin).host; } catch { /* "null" or malformed origin */ }
+      if (host !== req.headers.host) return next(new HttpError(403, 'Cross-origin request blocked'));
+    }
     next();
   });
 
