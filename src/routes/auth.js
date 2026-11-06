@@ -64,6 +64,7 @@ r.post('/register/start', (req, res) => {
   const otp = String(crypto.randomInt(100000, 999999));
   otps.set(zan, { otp, exp: Date.now() + 10 * 60e3, tries: 0 });
   run('INSERT INTO sms_outbox(msisdn, message) VALUES(?,?)', p.phone, `Your Zanzibar e-Government verification code is ${otp}. It expires in 10 minutes.`);
+  require('../lib/sms').kick();
   audit(req, 'auth.register_start', 'person', p.id);
   const out = { ok: true, phone_hint: `•••• ${p.phone.slice(-3)}`, full_name: p.full_name };
   if (require('../lib/sms').showCodesOnScreen()) out.sandbox_code = otp; // shown only while texts are not really being sent

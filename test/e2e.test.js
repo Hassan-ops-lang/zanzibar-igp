@@ -227,7 +227,11 @@ test('SMS through an Android phone gateway, with demo redirect', async () => {
     const p = (await admin('/admin/persons?q=')).filter((x) => x.phone && !db.one('SELECT 1 FROM users WHERE person_id = ?', x.id)).at(-1);
     const s = await (await fetch(base + '/api/auth/register/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ zan_id: p.zan_id, dob: p.dob }) })).json();
     assert.equal(s.sandbox_code, undefined);
-    await sms.processQueue();
+    // sent straight away – no background round needed (the test server runs no background jobs)
+    const t0 = Date.now();
+    for (let i = 0; i < 40 && got.length === 0; i++) await new Promise((r) => setTimeout(r, 25));
+    assert.ok(Date.now() - t0 < 1000, 'text handed to the phone within a second');
+    await new Promise((r) => setTimeout(r, 50));
     assert.equal(got.length, 1, 'only the new message is sent – older outbox messages are never blasted out');
     assert.equal(got[0].path, '/message');
     assert.deepEqual(got[0].body.phoneNumbers, ['+255777000111', '+254700000001']);

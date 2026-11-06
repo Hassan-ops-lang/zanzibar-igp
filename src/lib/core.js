@@ -76,7 +76,7 @@ function verifyAuditChain() {
 function notifyPerson(personId, applicationId, message) {
   run('INSERT INTO notifications(person_id, application_id, message) VALUES(?,?,?)', personId, applicationId, message);
   const p = one('SELECT phone FROM persons WHERE id = ?', personId);
-  if (p && p.phone) run('INSERT INTO sms_outbox(msisdn, message) VALUES(?,?)', p.phone, message);
+  if (p && p.phone) { run('INSERT INTO sms_outbox(msisdn, message) VALUES(?,?)', p.phone, message); require('./sms').kick(); }
 }
 
 // ---------- references ----------

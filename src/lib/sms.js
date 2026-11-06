@@ -135,8 +135,9 @@ async function deliver(c, msisdn, message) {
 
 // ---------- worker ----------
 let busy = false;
+let again = false;
 async function processQueue() {
-  if (busy) return 0;
+  if (busy) { again = true; return 0; } // a run is in progress: it will go round once more for the new message
   busy = true;
   try {
     const c = config();
@@ -161,7 +162,10 @@ async function processQueue() {
       }
     }
     return rows.length;
-  } finally { busy = false; }
+  } finally {
+    busy = false;
+    if (again) { again = false; setImmediate(() => processQueue().catch((e) => console.error('sms', e))); }
+  }
 }
 
 // Send one message right now (admin "Send test SMS"); records it in the outbox like any other message.
@@ -188,6 +192,13 @@ function retry(id) {
   if (!['failed', 'outbox'].includes(m.status)) throw bad('Only failed or unsent messages can be resent');
   if (config().mode === 'outbox') throw bad('Choose a gateway first');
   run("UPDATE sms_outbox SET status = 'queued', attempts = 0, next_attempt_at = NULL, last_error = NULL, created_at = datetime('now') WHERE id = ?", id);
+  kick();
 }
 
-module.exports = { config, publicConfig, updateConfig, showCodesOnScreen, processQueue, sendTest, retry, normalise, MODES };
+// Send newly queued messages right away instead of waiting for the next background round
+function kick() {
+  if (config().mode === 'outbox') return;
+  setImmediate(() => processQueue().catch((e) => console.error('sms', e)));
+}
+
+module.exports = { kick, config, publicConfig, updateConfig, showCodesOnScreen, processQueue, sendTest, retry, normalise, MODES };
