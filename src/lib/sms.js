@@ -116,6 +116,15 @@ const GATEWAYS = {
   },
 };
 
+// turn low-level network errors into advice an administrator can act on
+function explain(e) {
+  if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) return 'The gateway did not answer within 20 seconds – check the phone is awake, the SMS app shows STOP SERVICE, and the phone and this computer are on the same Wi-Fi';
+  const code = e && e.cause && e.cause.code;
+  if (code === 'ECONNREFUSED') return 'The phone refused the connection – check the SMS app\'s service is started and the port (usually 8080) is right';
+  if (['EHOSTUNREACH', 'ENETUNREACH', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN'].includes(code)) return `Cannot reach the gateway (${code}) – check the gateway address and that both devices are on the same network`;
+  return String((e && e.message) || e);
+}
+
 async function deliver(c, msisdn, message) {
   const redirect = c.redirect_to ? c.redirect_to.split(',') : null;
   const to = redirect || [msisdn];
@@ -148,7 +157,7 @@ async function processQueue() {
       } catch (e) {
         const failed = m.attempts + 1 >= MAX_ATTEMPTS;
         run(`UPDATE sms_outbox SET status = ?, gateway = ?, last_error = ?, next_attempt_at = datetime('now', ?) WHERE id = ?`,
-          failed ? 'failed' : 'queued', c.mode, String(e.message || e).slice(0, 300), `+${30 * (m.attempts + 1)} seconds`, m.id);
+          failed ? 'failed' : 'queued', c.mode, explain(e).slice(0, 300), `+${30 * (m.attempts + 1)} seconds`, m.id);
       }
     }
     return rows.length;
@@ -168,9 +177,8 @@ async function sendTest(to) {
     run("UPDATE sms_outbox SET status = 'sent', gateway_ref = ?, sent_to = ?, sent_at = datetime('now') WHERE id = ?", ref, msisdn, id);
     return { ok: true, id, ref };
   } catch (e) {
-    run("UPDATE sms_outbox SET status = 'failed', last_error = ? WHERE id = ?", String(e.message || e).slice(0, 300), id);
-    const err = bad(`Not sent: ${e.cause && e.cause.code ? `cannot reach the gateway (${e.cause.code})` : e.message}`);
-    throw err;
+    run("UPDATE sms_outbox SET status = 'failed', last_error = ? WHERE id = ?", explain(e).slice(0, 300), id);
+    throw bad(`Not sent: ${explain(e)}`);
   }
 }
 
